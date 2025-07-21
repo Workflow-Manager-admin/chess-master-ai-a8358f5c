@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import Chessboard from './components/Chessboard';
 import MoveHistory from './components/MoveHistory';
 import GameControls from './components/GameControls';
 import SettingsModal from './components/SettingsModal';
+import ConfettiCelebration from './components/ConfettiCelebration';
 import {
   getStartPosition,
   makeMove,
   getLegalMoves,
+  getAllLegalMoves,
   isWhitePiece,
   isBlackPiece,
   exportSANHistory,
@@ -48,6 +50,10 @@ function App() {
   // Animation
   const [animatingPiece, setAnimatingPiece] = useState(null);
   const [animationStyle, setAnimationStyle] = useState({});
+
+  // Celebratory animation (confetti)
+  const [showConfetti, setShowConfetti] = useState(false);
+  const celebrationTimeout = useRef(null);
 
   // FREEFORM PLAYER MOVE LOGIC: Always allow current turn's side to move, alternate after every valid move.
   // This disables AI/hints and bugged auto-moves, and never locks the UI.
@@ -128,6 +134,41 @@ function App() {
     setLastMove({ from, to });
   }
 
+  // Detect checkmate and show confetti. Called via effect on gameState & history
+  useEffect(() => {
+    function hasKing(board, color) {
+      // Return true if side (color) king is present on board
+      const kingChar = color === "w" ? "K" : "k";
+      return Object.values(board).includes(kingChar);
+    }
+    // Only check after every move
+    if (!history.length || currentPointer !== history.length - 1) {
+      setShowConfetti(false);
+      return;
+    }
+    // Whose turn? If zero legal moves, king present -> checkmate
+    const { board, turn } = gameState;
+    if (!hasKing(board, "w") || !hasKing(board, "b")) {
+      setShowConfetti(false);
+      return;
+    }
+    const legalMoves = getAllLegalMoves(gameState);
+    if (legalMoves.length === 0) {
+      setShowConfetti(true);
+      if (celebrationTimeout.current) clearTimeout(celebrationTimeout.current);
+      // Hide after 2.4s (must match ConfettiCelebration)
+      celebrationTimeout.current = setTimeout(() => setShowConfetti(false), 2400);
+    }
+    else {
+      setShowConfetti(false);
+    }
+    // Cleanup timeouts
+    return () => {
+      if (celebrationTimeout.current) clearTimeout(celebrationTimeout.current);
+    };
+  }, [gameState, history, currentPointer]);
+
+
   // Start new game (always white to move first, resets all state)
   function handleNewGame() {
     setPlayerColor('white'); // Always start with white on 'New Game'
@@ -138,6 +179,7 @@ function App() {
     setValidSquares([]);
     setLastMove(null);
     setAIThinking(false);
+    setShowConfetti(false);
   }
   // Reset keeps player color but resets board
   function handleReset() {
@@ -148,6 +190,7 @@ function App() {
     setValidSquares([]);
     setLastMove(null);
     setAIThinking(false);
+    setShowConfetti(false);
   }
 
   // Color switcher (always triggers new game—white starts)
@@ -190,18 +233,21 @@ function App() {
       <main className="chess-page-main">
         <div className="chess-center-col">
           <h1 className="chess-title">Chess Game</h1>
-          <Chessboard
-            position={gameState.board}
-            onSquareClick={handleSquareClick}
-            selected={selected}
-            validMoves={validSquares}
-            lastMove={lastMove}
-            animatePiece={animatingPiece}
-            animationStyle={animationStyle}
-            playerColor={playerColor}
-            colors={COLOR_PALETTE}
-            highlightSquares={bishopSquares}
-          />
+          <div style={{position:"relative", width:"100%", display:"flex", justifyContent:"center", alignItems:"center"}}>
+            <Chessboard
+              position={gameState.board}
+              onSquareClick={handleSquareClick}
+              selected={selected}
+              validMoves={validSquares}
+              lastMove={lastMove}
+              animatePiece={animatingPiece}
+              animationStyle={animationStyle}
+              playerColor={playerColor}
+              colors={COLOR_PALETTE}
+              highlightSquares={bishopSquares}
+            />
+            <ConfettiCelebration show={showConfetti} duration={2400} onDone={() => setShowConfetti(false)} />
+          </div>
           <GameControls
             onNewGame={handleNewGame}
             onReset={handleReset}
