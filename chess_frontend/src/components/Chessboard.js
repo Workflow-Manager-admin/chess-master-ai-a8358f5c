@@ -42,63 +42,43 @@ function Chessboard({
     return piece === piece.toUpperCase() ? 'white' : 'black';
   }
 
-  // Modern SVG piece: outlined with color fill
-  function ModernPieceSVG({ piece, className }) {
-    // SVG minimalist icon, solid fill + black outline (stroke)
-    // Only supports standard chess symbols
+  // Original/custom chess icon rendering (Unicode or simple graphical icons)
+  // This restores the easily recognizable original icons.
+  function PieceIcon({ piece, className }) {
+    // Standard Unicode chess symbols. (Feel free to swap with custom images if required.)
     if (!piece) return null;
-    const color = pieceColor(piece);
-    // Always universal stroke: "#444" per design
-    const stroke = "#444";
-    const outline = color === 'white' ? '#fff' : '#222';
-    const svgProps = {
-      width: "38", height: "38", viewBox: "0 0 45 45",
-      className, style: { display: "block" }
+    // White: uppercase, Black: lowercase.
+    // Chess Unicode: ♔♕♖♗♘♙ (white), ♚♛♜♝♞♟ (black)
+    const unicodes = {
+      K: "♔",
+      Q: "♕",
+      R: "♖",
+      B: "♗",
+      N: "♘",
+      P: "♙",
+      k: "♚",
+      q: "♛",
+      r: "♜",
+      b: "♝",
+      n: "♞",
+      p: "♟",
     };
-    const strokeWidth = 2;
-    const pieces = {
-      K: (
-        <svg {...svgProps}><g>
-          <circle cx="22.5" cy="22.5" r="16" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <rect x="20" y="13" width="5" height="13" rx="2" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <line x1="22.5" y1="7" x2="22.5" y2="19" stroke={stroke} strokeWidth={strokeWidth+0.8}/>
-        </g></svg>
-      ),
-      Q: (
-        <svg {...svgProps}><g>
-          <ellipse cx="22.5" cy="22.5" rx="15" ry="14" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <circle cx="16" cy="13" r="2.1" fill={stroke} stroke={outline} strokeWidth="1"/>
-          <circle cx="22.5" cy="10.7" r="2.1" fill={stroke} stroke={outline} strokeWidth="1"/>
-          <circle cx="29" cy="13" r="2.1" fill={stroke} stroke={outline} strokeWidth="1"/>
-        </g></svg>
-      ),
-      R: (
-        <svg {...svgProps}><g>
-          <rect x="10" y="14" width="25" height="18" rx="5" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <rect x="6" y="30" width="33" height="7" rx="2.4" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-        </g></svg>
-      ),
-      B: (
-        <svg {...svgProps}><g>
-          <ellipse cx="22.5" cy="20" rx="9" ry="13" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <circle cx="22.5" cy="12" r="2.7" fill={stroke}/>
-        </g></svg>
-      ),
-      N: (
-        <svg {...svgProps}><g>
-          <path d="M13,35 Q20,16 34,35" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <ellipse cx="18" cy="23" rx="3" ry="3.7" fill={stroke}/>
-        </g></svg>
-      ),
-      P: (
-        <svg {...svgProps}><g>
-          <circle cx="22.5" cy="16.8" r="6.1" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-          <rect x="16" y="23" width="13" height="11" rx="5" fill={outline} stroke={stroke} strokeWidth={strokeWidth}/>
-        </g></svg>
-      ),
-    };
-    const type = piece.toUpperCase();
-    return pieces[type];
+    const char = unicodes[piece] || "?";
+    return (
+      <span
+        className={`chess-piece-icon ${className || ""} ${pieceColor(piece)}`}
+        aria-label={`chess ${piece}`}
+        style={{
+          userSelect: "none",
+          display: "inline-block",
+          fontFamily: "'Segoe UI Symbol', 'Arial Unicode MS', 'Noto Serif', serif",
+          fontSize: "2em",
+          lineHeight: 1.1,
+        }}
+      >
+        {char}
+      </span>
+    );
   }
 
   function isSelected(sq) {
@@ -190,10 +170,11 @@ function Chessboard({
                   transition: 'background .12s, box-shadow .12s'
                 }}
               >
-                {piece &&
-                  <span className={`chess-piece piece-svg ${pieceColor(piece)}`} style={pieceStyle}>
-                    <ModernPieceSVG piece={piece} />
-                  </span>}
+                {piece && (
+                  <span className={`chess-piece ${pieceColor(piece)}`} style={pieceStyle}>
+                    <PieceIcon piece={piece} />
+                  </span>
+                )}
               </div>
             );
           })
