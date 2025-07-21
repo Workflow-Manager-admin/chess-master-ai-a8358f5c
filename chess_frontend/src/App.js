@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import Chessboard from './components/Chessboard';
 import MoveHistory from './components/MoveHistory';
@@ -8,7 +8,6 @@ import {
   getStartPosition,
   makeMove,
   getLegalMoves,
-  makeAIMove,
   isWhitePiece,
   isBlackPiece,
   exportSANHistory,
@@ -21,7 +20,7 @@ const AI_API_URL = process.env.REACT_APP_AI_API_URL;
 
 /**
  * Chess Game main React application.
- * Features: board, play vs AI, move validation, move history, minimal animation, responsive, color theme.
+ * Features: board, player vs player, move validation, move history, minimal animation, responsive, color theme.
  */
 // PUBLIC_INTERFACE
 function App() {
@@ -42,67 +41,79 @@ function App() {
   const [validSquares, setValidSquares] = useState([]);
   const [lastMove, setLastMove] = useState(null);
   const [aiThinking, setAIThinking] = useState(false);
-  const [playerColor, setPlayerColor] = useState('white'); // Always start game with white
+  // Keep the "playerColor" selector for UI, but all moves are now user driven
+  const [playerColor, setPlayerColor] = useState('white');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Animation
   const [animatingPiece, setAnimatingPiece] = useState(null);
   const [animationStyle, setAnimationStyle] = useState({});
 
-  // Always enforce alternating turns and white starts
-  // Only allow move if it is the correct player's turn and game not over
+  // FREEFORM PLAYER MOVE LOGIC: Always allow current turn's side to move, alternate after every valid move.
+  // This disables AI/hints and bugged auto-moves, and never locks the UI.
 
-  // Check if it is player's move
-  const isPlayerTurn = () =>
-    (playerColor === 'white' && gameState.turn === 'w') ||
-    (playerColor === 'black' && gameState.turn === 'b');
+  // Checks if the selected square contains a piece that is the current turn's color
+  function isCurrentTurnPiece(sq) {
+    const piece = gameState.board[sq];
+    if (!piece) return false;
+    if (gameState.turn === 'w' && isWhitePiece(piece)) return true;
+    if (gameState.turn === 'b' && isBlackPiece(piece)) return true;
+    return false;
+  }
 
-  // Handle player interaction with chessboard squares
+  // Main click handler: safe, free turn-by-turn piece selection and movement
   function handleSquareClick(sq) {
     if (aiThinking) return;
-    if (!isPlayerTurn()) return; // Don't allow move out of turn
 
     const piece = gameState.board[sq];
+
+    // If nothing is selected, select only pieces for the current turn
     if (!selected) {
-      // Select piece only if player turn and piece color matches
-      if (!piece) return;
-      if (
-        (gameState.turn === 'w' && isWhitePiece(piece) && playerColor === 'white') ||
-        (gameState.turn === 'b' && isBlackPiece(piece) && playerColor === 'black')
-      ) {
+      if (isCurrentTurnPiece(sq)) {
         setSelected(sq);
         setValidSquares(getLegalMoves(gameState, sq));
       }
-    } else if (selected === sq) {
-      // Deselect
+      return;
+    }
+
+    // Deselect if clicking selected again
+    if (selected === sq) {
       setSelected(null);
       setValidSquares([]);
-    } else {
-      // Try making move
-      const possible = getLegalMoves(gameState, selected);
-      if (possible.includes(sq)) {
-        // Animate piece
-        setAnimatingPiece({ sq: selected, from: selected, to: sq });
-        setAnimationStyle({
-          animation: 'move-piece .3s ease',
-        });
-
-        setTimeout(() => {
-          onMakeMove(selected, sq);
-          setAnimatingPiece(null);
-          setAnimationStyle({});
-        }, 240);
-        setSelected(null);
-        setValidSquares([]);
-      } else {
-        setSelected(null);
-        setValidSquares([]);
-      }
+      return;
     }
+
+    // Try perform move
+    const legals = getLegalMoves(gameState, selected);
+    if (legals.includes(sq)) {
+      setAnimatingPiece({ sq: selected, from: selected, to: sq });
+      setAnimationStyle({
+        animation: 'move-piece .3s ease',
+      });
+      setTimeout(() => {
+        onMakeMove(selected, sq);
+        setAnimatingPiece(null);
+        setAnimationStyle({});
+      }, 240);
+      setSelected(null);
+      setValidSquares([]);
+      return;
+    }
+
+    // Clicking another own piece, switch selection
+    if (isCurrentTurnPiece(sq)) {
+      setSelected(sq);
+      setValidSquares(getLegalMoves(gameState, sq));
+      return;
+    }
+
+    // Invalid: clear selection
+    setSelected(null);
+    setValidSquares([]);
   }
 
-  // Move handler - ensure game alternates, only continue if valid
-  function onMakeMove(from, to, aiMove = false) {
+  // Move handler - always allow legal move to be made, then alternate turn
+  function onMakeMove(from, to) {
     const { newState, move } = makeMove(gameState, from, to);
     if (!move) return;
     let newHistory;
@@ -115,44 +126,9 @@ function App() {
     setHistory(newHistory);
     setCurrentPointer(newHistory.length - 1);
     setLastMove({ from, to });
-
-    // Trigger AI move if it's the AI's turn
-    const nowAIsTurn =
-      (playerColor === 'white' && newState.turn === 'b') ||
-      (playerColor === 'black' && newState.turn === 'w');
-    if (!aiMove && nowAIsTurn) {
-      setTimeout(() => aiMoveTurn(), 400);
-    }
   }
 
-  // AI move
-  function aiMoveTurn() {
-    setAIThinking(true);
-    // Post to actual AI endpoint if defined, fallback to local random
-    if (AI_API_URL) {
-      fetch(`${AI_API_URL}/ai_move`, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fen: getFEN(gameState) }),
-      })
-        .then(res => res.json())
-        .then(({ from, to }) => {
-          onMakeMove(from, to, true);
-          setAIThinking(false);
-        })
-        .catch(() => {
-          const { newState, move } = makeAIMove(gameState);
-          if (move) onMakeMove(move.from, move.to, true);
-          setAIThinking(false);
-        });
-    } else {
-      const { newState, move } = makeAIMove(gameState);
-      if (move) onMakeMove(move.from, move.to, true);
-      setAIThinking(false);
-    }
-  }
-
-  // Start new game (always white to move first)
+  // Start new game (always white to move first, resets all state)
   function handleNewGame() {
     setPlayerColor('white'); // Always start with white on 'New Game'
     setGameState(getStartPosition());
@@ -206,8 +182,7 @@ function App() {
     document.body.style.setProperty('--color-secondary', COLOR_PALETTE.secondary);
   }, []);
 
-  // Highlight bishop squares as demo for red highlights in the reference image
-  // (In real app, highlights would come from game logic or selection)
+  // Reference: highlight bishop squares as demo for red highlights
   const bishopSquares = ["c1", "f1", "c8", "f8"];
 
   return (
@@ -232,7 +207,9 @@ function App() {
             onReset={handleReset}
             playerColor={playerColor}
             onChangeColor={handleChangeColor}
-            isPlaying={!!(history.length && currentPointer === history.length - 1 && !aiThinking)}
+            isPlaying={
+              !!(history.length && currentPointer === history.length - 1 && !aiThinking)
+            }
           />
         </div>
         <aside className="chess-side-col">
@@ -241,7 +218,9 @@ function App() {
             onSelectMove={handleSelectMove}
             currentPointer={currentPointer}
           />
-          <button className="settings-btn" onClick={() => setSettingsOpen(true)}>Settings</button>
+          <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
+            Settings
+          </button>
           <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}>
             <h3>Settings</h3>
             <p>
@@ -255,7 +234,13 @@ function App() {
           <footer className="chess-footer">
             <small>
               <span>Modern Chess App •&nbsp;</span>
-              <a href="https://www.chess.com/learn-how-to-play-chess" rel="noopener noreferrer" target="_blank">How to play</a>
+              <a
+                href="https://www.chess.com/learn-how-to-play-chess"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                How to play
+              </a>
             </small>
           </footer>
         </aside>

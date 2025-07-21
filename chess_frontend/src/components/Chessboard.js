@@ -48,10 +48,9 @@ function Chessboard({
     // Only supports standard chess symbols
     if (!piece) return null;
     const color = pieceColor(piece);
-    const stroke = 'var(--piece-stroke)';
-    const outline = color === 'white' ? '#fff' : 'var(--piece-black)';
-    // By piece type
-    // SVGs below: basic forms for modern/minimal chess icons for demo
+    // Always universal stroke: "#444" per design
+    const stroke = "#444";
+    const outline = color === 'white' ? '#fff' : '#222';
     const svgProps = {
       width: "38", height: "38", viewBox: "0 0 45 45",
       className, style: { display: "block" }
@@ -98,19 +97,7 @@ function Chessboard({
         </g></svg>
       ),
     };
-    // Map black = lowercase, white = uppercase
     const type = piece.toUpperCase();
-    // If color is black, fill white with #222, else #fff
-    if (color === "black") {
-      // Paint all fills #fff as --piece-black instead
-      return React.cloneElement(pieces[type], {}, React.Children.map(pieces[type].props.children, child => {
-        if (!child) return child;
-        return React.cloneElement(child, {
-          fill: child.props.fill === "#fff" || child.props.fill === outline ? "var(--piece-black)" : child.props.fill,
-          stroke: child.props.stroke || stroke,
-        });
-      }));
-    }
     return pieces[type];
   }
 
