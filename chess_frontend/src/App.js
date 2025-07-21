@@ -8,6 +8,7 @@ import ConfettiCelebration from './components/ConfettiCelebration';
 import {
   getStartPosition,
   makeMove,
+  makeAIMove,
   getLegalMoves,
   getAllLegalMoves,
   isWhitePiece,
@@ -23,7 +24,11 @@ const AI_API_URL = process.env.REACT_APP_AI_API_URL;
 /**
  * Chess Game main React application.
  * Features: board, player vs player, move validation, move history, minimal animation, responsive, color theme.
+ *//**
+ * Chess Game main React application.
+ * Features: board, player vs player, move validation, move history, minimal animation, responsive, color theme, and PvP/PvAI mode toggle.
  */
+
 // PUBLIC_INTERFACE
 function App() {
   // Theme/color config
@@ -43,7 +48,10 @@ function App() {
   const [validSquares, setValidSquares] = useState([]);
   const [lastMove, setLastMove] = useState(null);
   const [aiThinking, setAIThinking] = useState(false);
-  // Keep the "playerColor" selector for UI, but all moves are now user driven
+
+  // Game config state
+  const [gameMode, setGameMode] = useState('pvp'); // "pvp" | "pvai"
+  // Keep the "playerColor" selector for UI, but all moves are now user driven except in PvAI
   const [playerColor, setPlayerColor] = useState('white');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -55,9 +63,6 @@ function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const celebrationTimeout = useRef(null);
 
-  // FREEFORM PLAYER MOVE LOGIC: Always allow current turn's side to move, alternate after every valid move.
-  // This disables AI/hints and bugged auto-moves, and never locks the UI.
-
   // Checks if the selected square contains a piece that is the current turn's color
   function isCurrentTurnPiece(sq) {
     const piece = gameState.board[sq];
@@ -68,8 +73,17 @@ function App() {
   }
 
   // Main click handler: safe, free turn-by-turn piece selection and movement
+  // Handles both PvP and PvAI by triggering AI move logic after player move if needed
   function handleSquareClick(sq) {
     if (aiThinking) return;
+    // In PvAI, skip input unless it's the player's color to move
+    if (
+      gameMode === "pvai" &&
+      ((playerColor === "white" && gameState.turn !== "w") ||
+        (playerColor === "black" && gameState.turn !== "b"))
+    ) {
+      return;
+    }
 
     const piece = gameState.board[sq];
 
@@ -97,7 +111,7 @@ function App() {
         animation: 'move-piece .3s ease',
       });
       setTimeout(() => {
-        onMakeMove(selected, sq);
+        onPlayerMove(selected, sq);
         setAnimatingPiece(null);
         setAnimationStyle({});
       }, 240);
@@ -118,8 +132,8 @@ function App() {
     setValidSquares([]);
   }
 
-  // Move handler - always allow legal move to be made, then alternate turn
-  function onMakeMove(from, to) {
+  // Move handler: applies player move and triggers AI if needed
+  function onPlayerMove(from, to) {
     const { newState, move } = makeMove(gameState, from, to);
     if (!move) return;
     let newHistory;
@@ -132,6 +146,40 @@ function App() {
     setHistory(newHistory);
     setCurrentPointer(newHistory.length - 1);
     setLastMove({ from, to });
+
+    // If in PvAI and not game over, schedule AI move if now AI's turn
+    if (
+      gameMode === "pvai" &&
+      (
+        (playerColor === "white" && newState.turn === "b") ||
+        (playerColor === "black" && newState.turn === "w")
+      )
+    ) {
+      // Check if game is not over (there are legal moves) before AI move
+      const legalsLeft = getAllLegalMoves(newState);
+      if (legalsLeft.length > 0) {
+        setAIThinking(true);
+        setTimeout(() => {
+          doAIMove(newState, newHistory);
+        }, 550); // Short AI delay for effect
+      }
+    }
+  }
+
+  // AI move logic; called when it's AI's turn, acts on provided state/history
+  function doAIMove(stateForAI, historyForAI) {
+    const { newState, move } = makeAIMove(stateForAI);
+    if (!move) {
+      setAIThinking(false);
+      return;
+    }
+    setGameState(newState);
+    const newHistory = [...historyForAI, move];
+    setHistory(newHistory);
+    setCurrentPointer(newHistory.length - 1);
+    setLastMove({ from: move.from, to: move.to });
+    setAIThinking(false);
+    // No direct recursion here; next move is player or game over.
   }
 
   // Detect checkmate and show confetti. Called via effect on gameState & history
@@ -169,9 +217,9 @@ function App() {
   }, [gameState, history, currentPointer]);
 
 
-  // Start new game (always white to move first, resets all state)
+  // Start new game (always white to move, resets all state)
   function handleNewGame() {
-    setPlayerColor('white'); // Always start with white on 'New Game'
+    setPlayerColor('white');
     setGameState(getStartPosition());
     setHistory([]);
     setCurrentPointer(-1);
@@ -181,7 +229,7 @@ function App() {
     setAIThinking(false);
     setShowConfetti(false);
   }
-  // Reset keeps player color but resets board
+  // Reset keeps player color and game mode but resets board
   function handleReset() {
     setGameState(getStartPosition());
     setHistory([]);
@@ -193,7 +241,7 @@ function App() {
     setShowConfetti(false);
   }
 
-  // Color switcher (always triggers new game—white starts)
+  // Color switcher; in PvAI mode, allows player to pick side, triggers new game
   function handleChangeColor(color) {
     setPlayerColor(color);
     setGameState(getStartPosition());
@@ -203,9 +251,24 @@ function App() {
     setValidSquares([]);
     setLastMove(null);
     setAIThinking(false);
+    setShowConfetti(false);
   }
 
-  // Move history time travel
+  // Game mode switch handler; resets board and playerColor if needed
+  function handleGameModeChange(mode) {
+    setGameMode(mode);
+    setPlayerColor('white');
+    setGameState(getStartPosition());
+    setHistory([]);
+    setCurrentPointer(-1);
+    setSelected(null);
+    setValidSquares([]);
+    setLastMove(null);
+    setAIThinking(false);
+    setShowConfetti(false);
+  }
+
+  // Move history time travel (disables AI on viewing old moves, disables move selection)
   function handleSelectMove(idx) {
     let state = getStartPosition();
     for (let i = 0; i <= idx; ++i) {
@@ -216,6 +279,7 @@ function App() {
     setSelected(null);
     setValidSquares([]);
     setLastMove(idx >= 0 ? { from: history[idx].from, to: history[idx].to } : null);
+    setAIThinking(false); // If AI was thinking, cancel "auto" state when time-traveling
   }
 
   // CSS theme: inject variables for color palette
@@ -228,12 +292,17 @@ function App() {
   // Reference: highlight bishop squares as demo for red highlights
   const bishopSquares = ["c1", "f1", "c8", "f8"];
 
+  // Player color/side label for modal
+  const playerSideLabel = gameMode === "pvai"
+    ? (playerColor === "white" ? "You (White) vs AI (Black)" : "You (Black) vs AI (White)")
+    : "Player vs Player mode";
+
   return (
     <div className="App chess-app-root" data-theme={theme}>
       <main className="chess-page-main">
         <div className="chess-center-col">
           <h1 className="chess-title">Chess Game</h1>
-          <div style={{position:"relative", width:"100%", display:"flex", justifyContent:"center", alignItems:"center"}}>
+          <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}>
             <Chessboard
               position={gameState.board}
               onSquareClick={handleSquareClick}
@@ -242,7 +311,8 @@ function App() {
               lastMove={lastMove}
               animatePiece={animatingPiece}
               animationStyle={animationStyle}
-              playerColor={playerColor}
+              // Board orientation: show from user's perspective in PvAI mode, else white by default
+              playerColor={gameMode === "pvai" ? playerColor : "white"}
               colors={COLOR_PALETTE}
               highlightSquares={bishopSquares}
             />
@@ -256,6 +326,9 @@ function App() {
             isPlaying={
               !!(history.length && currentPointer === history.length - 1 && !aiThinking)
             }
+            gameMode={gameMode}
+            onGameModeChange={handleGameModeChange}
+            aiEnabled={true}
           />
         </div>
         <aside className="chess-side-col">
@@ -269,9 +342,52 @@ function App() {
           </button>
           <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}>
             <h3>Settings</h3>
-            <p>
-              <em>Minimal settings - future enhancements coming soon!</em>
-            </p>
+            <div style={{ margin: "1.1em 0 0.7em 0", padding: "0.5em 0", borderBottom: "1px solid #ccc" }}>
+              <span style={{ fontWeight: 600 }}>Game Mode</span>
+              <div style={{ marginTop: "0.35em", display: "flex", gap: "1em" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4em" }}>
+                  <input
+                    type="radio"
+                    checked={gameMode === "pvp"}
+                    onChange={() => handleGameModeChange("pvp")}
+                    name="game-mode"
+                  />
+                  2 Players
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4em" }}>
+                  <input
+                    type="radio"
+                    checked={gameMode === "pvai"}
+                    onChange={() => handleGameModeChange("pvai")}
+                    name="game-mode"
+                  />
+                  Play vs AI
+                </label>
+              </div>
+              <div style={{ marginTop: "0.7em", color: "#888", fontSize: "0.97em" }}>
+                {playerSideLabel}
+              </div>
+              {gameMode === 'pvai' && (
+                <div style={{ marginTop: '0.7em', marginBottom: "0.5em" }}>
+                  <label style={{ fontWeight: 400, fontSize: '1em', display: 'block', marginBottom: '0.3em' }}>Choose your side:</label>
+                  <div style={{ display: 'flex', gap: '0.7em' }}>
+                    <button
+                      className={`color-btn${playerColor === 'white' ? ' selected' : ''}`}
+                      onClick={() => handleChangeColor('white')}
+                      disabled={history.length > 0 && currentPointer === history.length - 1}
+                      style={{ minWidth: "65px" }}
+                    >White</button>
+                    <button
+                      className={`color-btn${playerColor === 'black' ? ' selected' : ''}`}
+                      onClick={() => handleChangeColor('black')}
+                      disabled={history.length > 0 && currentPointer === history.length - 1}
+                      style={{ minWidth: "65px" }}
+                    >Black</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div>
               <strong>AI API URL:</strong>{" "}
               {AI_API_URL || <span style={{ color: 'gray' }}>Local AI</span>}
