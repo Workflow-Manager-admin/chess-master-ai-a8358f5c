@@ -25,7 +25,7 @@ const AI_API_URL = process.env.REACT_APP_AI_API_URL;
  */
 // PUBLIC_INTERFACE
 function App() {
-  // Theme and color config
+  // Theme/color config
   const COLOR_PALETTE = {
     accent: '#b58863',
     primary: '#3a3a3a',
@@ -33,31 +33,38 @@ function App() {
   };
 
   const [theme] = useState('light'); // Hardcode theme, but could be extended
-  // Game state management
+
+  // Game state
   const [gameState, setGameState] = useState(getStartPosition());
-  const [history, setHistory] = useState([]); // Each move: {from, to, piece, san, ...}
-  const [currentPointer, setCurrentPointer] = useState(-1); // Index into history for possible navigation/time travel
-  const [selected, setSelected] = useState(null); // selected square for moves
+  const [history, setHistory] = useState([]);
+  const [currentPointer, setCurrentPointer] = useState(-1);
+  const [selected, setSelected] = useState(null);
   const [validSquares, setValidSquares] = useState([]);
-  const [lastMove, setLastMove] = useState(null); // {from, to}
+  const [lastMove, setLastMove] = useState(null);
   const [aiThinking, setAIThinking] = useState(false);
-  const [playerColor, setPlayerColor] = useState('white'); // Default: white
+  const [playerColor, setPlayerColor] = useState('white'); // Always start game with white
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Animation
   const [animatingPiece, setAnimatingPiece] = useState(null);
   const [animationStyle, setAnimationStyle] = useState({});
 
-  // Accessibility/ref
-  const boardRef = useRef();
-  
-  // Handle player move
+  // Always enforce alternating turns and white starts
+  // Only allow move if it is the correct player's turn and game not over
+
+  // Check if it is player's move
+  const isPlayerTurn = () =>
+    (playerColor === 'white' && gameState.turn === 'w') ||
+    (playerColor === 'black' && gameState.turn === 'b');
+
+  // Handle player interaction with chessboard squares
   function handleSquareClick(sq) {
-    // Already completed game?
     if (aiThinking) return;
+    if (!isPlayerTurn()) return; // Don't allow move out of turn
+
+    const piece = gameState.board[sq];
     if (!selected) {
-      // Select own piece
-      const piece = gameState.board[sq];
+      // Select piece only if player turn and piece color matches
       if (!piece) return;
       if (
         (gameState.turn === 'w' && isWhitePiece(piece) && playerColor === 'white') ||
@@ -71,10 +78,10 @@ function App() {
       setSelected(null);
       setValidSquares([]);
     } else {
-      // Try move
+      // Try making move
       const possible = getLegalMoves(gameState, selected);
       if (possible.includes(sq)) {
-        // Animate piece (minimal, fade jump)
+        // Animate piece
         setAnimatingPiece({ sq: selected, from: selected, to: sq });
         setAnimationStyle({
           animation: 'move-piece .3s ease',
@@ -94,23 +101,26 @@ function App() {
     }
   }
 
-  // Make move (player or AI), update state/history
+  // Move handler - ensure game alternates, only continue if valid
   function onMakeMove(from, to, aiMove = false) {
     const { newState, move } = makeMove(gameState, from, to);
-    if (!move) return; // invalid
+    if (!move) return;
     let newHistory;
     if (currentPointer === history.length - 1) {
       newHistory = [...history, move];
     } else {
-      // Time travel, overwrite
       newHistory = history.slice(0, currentPointer + 1).concat([move]);
     }
     setGameState(newState);
     setHistory(newHistory);
     setCurrentPointer(newHistory.length - 1);
     setLastMove({ from, to });
-    // Next: If against AI and not game over, trigger AI response
-    if (!aiMove && playerColor === (gameState.turn === 'w' ? 'white' : 'black')) {
+
+    // Trigger AI move if it's the AI's turn
+    const nowAIsTurn =
+      (playerColor === 'white' && newState.turn === 'b') ||
+      (playerColor === 'black' && newState.turn === 'w');
+    if (!aiMove && nowAIsTurn) {
       setTimeout(() => aiMoveTurn(), 400);
     }
   }
@@ -118,7 +128,7 @@ function App() {
   // AI move
   function aiMoveTurn() {
     setAIThinking(true);
-    // If external AI endpoint, request here; else use local AI.
+    // Post to actual AI endpoint if defined, fallback to local random
     if (AI_API_URL) {
       fetch(`${AI_API_URL}/ai_move`, {
         method: "POST",
@@ -126,12 +136,11 @@ function App() {
         body: JSON.stringify({ fen: getFEN(gameState) }),
       })
         .then(res => res.json())
-        .then(({from, to}) => {
+        .then(({ from, to }) => {
           onMakeMove(from, to, true);
           setAIThinking(false);
         })
         .catch(() => {
-          // fallback
           const { newState, move } = makeAIMove(gameState);
           if (move) onMakeMove(move.from, move.to, true);
           setAIThinking(false);
@@ -143,35 +152,51 @@ function App() {
     }
   }
 
-  // New game: reset everything
+  // Start new game (always white to move first)
   function handleNewGame() {
+    setPlayerColor('white'); // Always start with white on 'New Game'
     setGameState(getStartPosition());
     setHistory([]);
     setCurrentPointer(-1);
     setSelected(null);
     setValidSquares([]);
     setLastMove(null);
+    setAIThinking(false);
   }
-  // Reset: reset board and history, keep color
+  // Reset keeps player color but resets board
   function handleReset() {
-    handleNewGame();
+    setGameState(getStartPosition());
+    setHistory([]);
+    setCurrentPointer(-1);
+    setSelected(null);
+    setValidSquares([]);
+    setLastMove(null);
+    setAIThinking(false);
   }
 
-  // Color select
+  // Color switcher (always triggers new game—white starts)
   function handleChangeColor(color) {
     setPlayerColor(color);
-    handleNewGame();
+    setGameState(getStartPosition());
+    setHistory([]);
+    setCurrentPointer(-1);
+    setSelected(null);
+    setValidSquares([]);
+    setLastMove(null);
+    setAIThinking(false);
   }
 
   // Move history time travel
   function handleSelectMove(idx) {
-    // Play moves up to this one
     let state = getStartPosition();
     for (let i = 0; i <= idx; ++i) {
       ({ newState: state } = makeMove(state, history[i].from, history[i].to));
     }
     setGameState(state);
     setCurrentPointer(idx);
+    setSelected(null);
+    setValidSquares([]);
+    setLastMove(idx >= 0 ? { from: history[idx].from, to: history[idx].to } : null);
   }
 
   // CSS theme: inject variables for color palette
@@ -180,6 +205,10 @@ function App() {
     document.body.style.setProperty('--color-primary', COLOR_PALETTE.primary);
     document.body.style.setProperty('--color-secondary', COLOR_PALETTE.secondary);
   }, []);
+
+  // Highlight bishop squares as demo for red highlights in the reference image
+  // (In real app, highlights would come from game logic or selection)
+  const bishopSquares = ["c1", "f1", "c8", "f8"];
 
   return (
     <div className="App chess-app-root" data-theme={theme}>
@@ -196,6 +225,7 @@ function App() {
             animationStyle={animationStyle}
             playerColor={playerColor}
             colors={COLOR_PALETTE}
+            highlightSquares={bishopSquares}
           />
           <GameControls
             onNewGame={handleNewGame}

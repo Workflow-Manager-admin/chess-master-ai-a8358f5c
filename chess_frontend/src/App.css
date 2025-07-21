@@ -13,6 +13,15 @@
   --btn-accent: #b58863;
   --btn-secondary: #e0e0d6;
   --box-shadow: 0 2px 8px 0 #b5886310;
+  /* Chessboard design variables per modern outlined style */
+  --board-light: #f0d9b5;
+  --board-dark: #b58863;
+  --highlight-red: #d45a5a;
+  --highlight-gray: #bbb8bb;
+  --piece-white: #fff;
+  --piece-black: #222;
+  --piece-stroke: #444;
+  --board-border: #444;
 }
 
 [data-theme="dark"] {

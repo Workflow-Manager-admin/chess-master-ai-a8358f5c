@@ -1,10 +1,8 @@
-// PUBLIC_INTERFACE
-// Minimal chess engine in JS: board state, move making, move legality, and simple random AI
+/*
+PUBLIC_INTERFACE
+Minimal chess engine in JS: board state, move making, move legality, and simple random AI
+*/
 
-/**
- * Unicode piece codes: KQRBNP, lowercase for black
- * Board representation: {a8: 'r', b8: 'n', ..., h1: 'R'}
- */
 const fenStart =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -14,8 +12,7 @@ function parseFEN(fen) {
   const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
   const board = {};
-  let row = 0,
-    col = 0;
+  let row = 0, col = 0;
   for (let char of placement) {
     if (char === '/') {
       row++;
@@ -56,6 +53,7 @@ function getFEN({ board, turn, castling, ep, halfmove, fullmove }) {
 }
 
 // PUBLIC_INTERFACE
+// Always start with white to move, default castling rights
 function getStartPosition() {
   return parseFEN(fenStart);
 }
